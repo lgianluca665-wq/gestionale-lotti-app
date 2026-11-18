@@ -1,0 +1,1 @@
+# gestionale-lotti-app
