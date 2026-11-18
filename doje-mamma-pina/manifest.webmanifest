@@ -2,7 +2,6 @@
   "name": "Mamma Pina",
   "short_name": "Mamma Pina",
   "id": "./",
-  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7e5c3",
