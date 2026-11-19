@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<!--
+  PAGINA DI AVVIO – Gestionale Lotti
+  Modello: i valori {{...}} vengono sostituiti da strumenti/crea_pagina_avvio.py per ogni cliente.
+  È la pagina che il cliente salva sulla schermata Home: mostra l'icona e il nome dell'azienda
+  e apre al suo interno l'app (Google Apps Script) del cliente.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bottega Demo</title>
+<meta name="theme-color" content="#1e4d6b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bottega Demo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html, body { margin: 0; height: 100%; background: #f4ede1; }
+  body { font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1c221f; overflow: hidden; }
+  #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block;
+    padding-top: env(safe-area-inset-top); box-sizing: border-box; background: #f4ede1; }
+  #apertura { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; background: #f4ede1; transition: opacity .35s ease; z-index: 2; text-align: center; padding: 24px; }
+  #apertura.via { opacity: 0; pointer-events: none; }
+  #apertura img { width: 120px; height: 120px; object-fit: contain; border-radius: 26px; }
+  #apertura > b { font-size: 20px; }
+  .rotella { width: 34px; height: 34px; border-radius: 50%; border: 4px solid rgba(0,0,0,.08);
+    border-top-color: #1e4d6b; animation: gira .8s linear infinite; }
+  @keyframes gira { to { transform: rotate(360deg); } }
+  #messaggio { color: #5c6761; max-width: 320px; }
+  #problema { display: none; max-width: 340px; }
+  #problema.visibile { display: block; }
+  #problema h2 { margin: 4px 0 6px; font-size: 21px; }
+  #problema p { margin: 0 0 14px; color: #3d4842; }
+  #problema .pulsanti { display: grid; gap: 10px; }
+  #problema a, #problema button { display: block; border-radius: 12px; padding: 13px 16px; font: inherit; font-weight: 700;
+    text-decoration: none; border: 0; cursor: pointer; }
+  #riprova { background: #1e4d6b; color: #ffffff; }
+  #apriDiretta { background: #fff; color: #1c221f; border: 1px solid #d5dbd6 !important; }
+  #mostraComunque { background: none; color: #5c6761; font-weight: 400; text-decoration: underline; padding: 6px; }
+  #invito { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 3;
+    background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 14px 14px 12px;
+    display: none; gap: 12px; align-items: flex-start; }
+  #invito.visibile { display: flex; }
+  #invito img { width: 44px; height: 44px; border-radius: 10px; flex: none; }
+  #invito p { margin: 0 0 8px; font-size: 15px; }
+  #invito .azioni { display: flex; gap: 10px; justify-content: flex-end; }
+  #invito button { border: 0; border-radius: 10px; padding: 9px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+  #installa { background: #1e4d6b; color: #ffffff; }
+  #chiudiInvito { background: #eef0ee; color: #1c221f; }
+</style>
+</head>
+<body>
+  <div id="apertura" role="status">
+    <img src="icona-512.png" alt="">
+    <b>Bottega Demo</b>
+    <div class="rotella" id="rotella"></div>
+    <div id="messaggio"></div>
+    <div id="problema" role="alert">
+      <h2>L'app non si apre</h2>
+      <p>Riprova tra qualche secondo. Se il problema continua, avvisa il responsabile: deve controllare che
+        l'app sia pubblicata con <b>Chi ha accesso: Chiunque</b>.</p>
+      <div class="pulsanti">
+        <button id="riprova" type="button">Riprova</button>
+        <a id="apriDiretta" target="_blank" rel="noopener">Apri l'app direttamente</a>
+        <button id="mostraComunque" type="button">Mostra la pagina di Google</button>
+      </div>
+    </div>
+  </div>
+  <iframe id="app" title="Bottega Demo" allow="camera; clipboard-write"></iframe>
+
+  <div id="invito" role="dialog" aria-label="Aggiungi alla schermata Home">
+    <img src="icona-192.png" alt="">
+    <div style="flex:1">
+      <p id="testoInvito"></p>
+      <div class="azioni">
+        <button id="chiudiInvito">Non ora</button>
+        <button id="installa" hidden>Aggiungi</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Configurazione del cliente (inserita da strumenti/crea_pagina_avvio.py)
+  const CLIENTE = {"nome": "Bottega Demo", "nome_breve": "Bottega Demo", "colore_principale": "#1e4d6b", "colore_accento": "#a5531b", "url_app": ""};
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const app = document.getElementById('app');
+  const apertura = document.getElementById('apertura');
+  const messaggio = document.getElementById('messaggio');
+
+  /* ---- Apertura dell'app del cliente dentro la pagina ---- */
+  /*
+   * Quale app aprire: quella indicata nel link (?app=ID, creato dal menu "📱 Link e QR code" del foglio
+   * del cliente) oppure quella fissata in cliente.json (url_app). Il link resta nell'indirizzo della
+   * pagina, così l'icona salvata sulla Home apre sempre la stessa app.
+   */
+  const qs = new URLSearchParams(location.search);
+  let idApp = /^[\w-]{20,120}$/.test(qs.get('app') || '') ? qs.get('app') : '';
+  try {
+    if (idApp) localStorage.setItem('gl.app', idApp);
+    else if (!CLIENTE.url_app) idApp = localStorage.getItem('gl.app') || '';
+  } catch (e) { /* memoria non disponibile */ }
+  if (idApp && !qs.get('app')) history.replaceState(null, '', '?app=' + encodeURIComponent(idApp));
+  const urlApp = idApp ? 'https://script.google.com/macros/s/' + idApp + '/exec' : (CLIENTE.url_app || '');
+
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(urlApp)) {
+    document.getElementById('rotella').remove();
+    messaggio.textContent = 'Apri questa pagina dal link che trovi nel foglio del gestionale: ' +
+      'menu 📦 Gestionale › 📱 Link e QR code dell\'app.';
+  } else {
+    const parametri = new URLSearchParams({
+      nome: CLIENTE.nome,
+      colore: CLIENTE.colore_principale,
+      accento: CLIENTE.colore_accento || '',
+      logo: new URL('logo.png', location.href).href,
+      avvio: location.origin
+    });
+    app.src = urlApp + '?' + parametri.toString();
+    document.getElementById('apriDiretta').href = urlApp;
+    document.getElementById('riprova').addEventListener('click', () => location.reload());
+    document.getElementById('mostraComunque').addEventListener('click', nascondi);
+    // Se Google risponde con un errore (es. app non pubblicata per "Chiunque") l'app non manda il segnale
+    // "pronto": invece della pagina di errore di Google si mostra un messaggio chiaro.
+    app.addEventListener('load', () => { if (!pronta) attesaPronto = setTimeout(mostraProblema, 7000); });
+    setTimeout(() => { if (!pronta) messaggio.textContent = 'Connessione lenta, attendi…'; }, 8000);
+    setTimeout(() => { if (!pronta) mostraProblema(); }, 30000);
+  }
+
+  let pronta = false;
+  let attesaPronto = null;
+  function nascondi() { apertura.classList.add('via'); }
+  function mostraProblema() {
+    if (pronta) return;
+    const r = document.getElementById('rotella');
+    if (r) r.remove();
+    messaggio.textContent = '';
+    document.getElementById('problema').classList.add('visibile');
+  }
+  function appPronta() {
+    if (pronta) return;
+    pronta = true;
+    clearTimeout(attesaPronto);
+    document.getElementById('problema').classList.remove('visibile');
+    setTimeout(nascondi, 300);
+    setTimeout(mostraInvitoSePronto, 2500);   // l'invito compare solo quando l'app funziona
+  }
+
+  /*
+   * L'app (dentro l'iframe) salva qui l'accesso dell'operatore: su iPhone la memoria
+   * della pagina salvata sulla Home è più affidabile di quella dell'app incorporata.
+   */
+  window.addEventListener('message', (e) => {
+    let host = '';
+    try { host = new URL(e.origin).hostname; } catch (err) { return; }
+    if (!/\.googleusercontent\.com$/.test(host)) return;
+    const d = e.data || {};
+    if (d.gl === 'pronto') return appPronta();
+    if (typeof d.chiave !== 'string' || d.chiave.length > 200) return;
+    const chiave = 'gl.' + d.chiave;
+    try {
+      if (d.gl === 'chiedi') e.source.postMessage({ gl: 'valore', chiave: d.chiave, valore: localStorage.getItem(chiave) }, e.origin);
+      if (d.gl === 'salva') {
+        if (d.valore === null || d.valore === undefined) localStorage.removeItem(chiave);
+        else if (typeof d.valore === 'string' && d.valore.length < 2000) localStorage.setItem(chiave, d.valore);
+      }
+    } catch (err) { /* memoria non disponibile */ }
+  });
+
+  /* ---- Invito ad aggiungere l'icona alla schermata Home ---- */
+  const invito = document.getElementById('invito');
+  const testo = document.getElementById('testoInvito');
+  const btnInstalla = document.getElementById('installa');
+  const installata = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  let giaChiuso = false;
+  try { giaChiuso = localStorage.getItem('gl.invitoChiuso') === '1'; } catch (e) { /* niente */ }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let richiestaInstallazione = null;
+
+  let testoInvito = '';
+  function mostraInvito(html) {
+    if (installata || giaChiuso) return;
+    testoInvito = html;
+    if (pronta) setTimeout(mostraInvitoSePronto, 2500);
+  }
+  function mostraInvitoSePronto() {
+    if (!pronta || !testoInvito || installata || giaChiuso) return;
+    testo.innerHTML = testoInvito;
+    invito.classList.add('visibile');
+  }
+  if (ios) {
+    mostraInvito('Aggiungi <b>' + esc(CLIENTE.nome_breve) + '</b> alla schermata Home: tocca <b>Condividi</b> ' +
+      '<span aria-hidden="true">⬆️</span> in basso e poi <b>Aggiungi alla schermata Home</b>.');
+  } else if (/android/i.test(navigator.userAgent)) {
+    mostraInvito('Aggiungi <b>' + esc(CLIENTE.nome_breve) + '</b> alla schermata Home: menu <b>⋮</b> in alto a destra e poi ' +
+      '<b>Aggiungi a schermata Home</b>.');
+  }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    richiestaInstallazione = e;
+    testoInvito = 'Aggiungi <b>' + esc(CLIENTE.nome_breve) + '</b> alla schermata Home per aprirla con un tocco.';
+    btnInstalla.hidden = false;
+    if (pronta) mostraInvitoSePronto();
+  });
+  btnInstalla.addEventListener('click', async () => {
+    if (!richiestaInstallazione) return;
+    richiestaInstallazione.prompt();
+    await richiestaInstallazione.userChoice;
+    invito.classList.remove('visibile');
+  });
+  document.getElementById('chiudiInvito').addEventListener('click', () => {
+    invito.classList.remove('visibile');
+    try { localStorage.setItem('gl.invitoChiuso', '1'); } catch (e) { /* niente */ }
+  });
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
